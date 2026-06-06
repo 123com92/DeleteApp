@@ -20,7 +20,7 @@ public sealed class GeneralCleaner
         _store = store;
     }
 
-    public async Task<IReadOnlyList<OperationRecord>> ExecuteAsync(IReadOnlyList<ScanItem> items, CancellationToken cancellationToken)
+    public Task<IReadOnlyList<OperationRecord>> ExecuteAsync(IReadOnlyList<ScanItem> items, CancellationToken cancellationToken)
     {
         var records = new List<OperationRecord>();
 
@@ -62,7 +62,7 @@ public sealed class GeneralCleaner
             }
         }
 
-        return records;
+        return Task.FromResult<IReadOnlyList<OperationRecord>>(records);
     }
 
     private OperationRecord StopProcess(ScanItem item)

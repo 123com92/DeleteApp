@@ -31,11 +31,23 @@ public sealed class AsyncRelayCommand : ICommand
             return;
         }
 
+        _isExecuting = true;
+        RaiseCanExecuteChanged();
+
         try
         {
-            _isExecuting = true;
-            RaiseCanExecuteChanged();
-            await _execute().ConfigureAwait(false);
+            await _execute();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(
+                $"执行出错：{ex.Message}",
+                "错误",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
         }
         finally
         {

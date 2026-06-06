@@ -1,7 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows;
-using System.Windows.Data;
+using System.Windows.Threading;
 using DeleteApp.Core.Cleaner;
 using DeleteApp.Core.Quarantine;
 using DeleteApp.Core.Report;
@@ -34,13 +34,14 @@ public sealed class MainViewModel : ObservableObject
     private CancellationTokenSource? _scanCts;
     private bool _isScanning;
     private bool _isOperating;
-    private bool? _allSelected;
+    private bool _allSelected;
+    private bool _allSelectedUpdating;
     private bool _onlyHighRisk;
     private int _activeTabIndex;
     private string _statusText = "就绪";
     private string _scanProgress = "";
 
-    private List<ScanItemViewModel> _allItems = [];
+    private readonly List<ScanItemViewModel> _allItems = [];
 
     public MainViewModel()
     {
@@ -138,25 +139,31 @@ public sealed class MainViewModel : ObservableObject
         {
             if (SetProperty(ref _activeTabIndex, value))
             {
-                _allSelected = null;
-                RaisePropertyChanged(nameof(AllSelected));
                 RaisePropertyChanged(nameof(CanExecuteClean));
                 ExecuteCleanCommand.RaiseCanExecuteChanged();
             }
         }
     }
 
-    public bool? AllSelected
+    public bool AllSelected
     {
         get => _allSelected;
         set
         {
-            if (SetProperty(ref _allSelected, value) && value.HasValue)
+            if (_allSelectedUpdating)
             {
+                return;
+            }
+
+            if (SetProperty(ref _allSelected, value))
+            {
+                _allSelectedUpdating = true;
                 foreach (var item in GetActiveTabItems())
                 {
-                    item.IsSelected = value.Value;
+                    item.IsSelected = value;
                 }
+
+                _allSelectedUpdating = false;
             }
         }
     }
@@ -240,19 +247,20 @@ public sealed class MainViewModel : ObservableObject
 
     private async Task ScanAsync()
     {
-        Cancel();
-        _scanCts = new CancellationTokenSource();
-        var token = _scanCts.Token;
-
-        IsScanning = true;
-        StatusText = "扫描中…";
-        ScanProgress = "";
-
-        ClearAllItems();
-        UpdateAllSummaries();
-
         try
         {
+            Cancel();
+
+            _scanCts = new CancellationTokenSource();
+            var token = _scanCts.Token;
+
+            IsScanning = true;
+            StatusText = "扫描中…";
+            ScanProgress = "";
+
+            ClearAllItems();
+            UpdateAllSummaries();
+
             var scanned = await Task.Run(async () =>
             {
                 var candidates = await _scanner.ScanAsync(token);
@@ -309,7 +317,7 @@ public sealed class MainViewModel : ObservableObject
                 ScanProgress = $"高 {AllItems.Count(i => i.Item.RiskLevel == RiskLevel.High)} / 中 {AllItems.Count(i => i.Item.RiskLevel == RiskLevel.Medium)} / 低 {AllItems.Count(i => i.Item.RiskLevel == RiskLevel.Low)}";
                 UpdateAllSummaries();
                 RaiseCanExecutes();
-            });
+            }, DispatcherPriority.Background);
         }
         catch (OperationCanceledException)
         {
@@ -345,6 +353,12 @@ public sealed class MainViewModel : ObservableObject
         }
 
         _allItems.Clear();
+
+        _allSelectedUpdating = true;
+        _allSelected = false;
+        _allSelectedUpdating = false;
+        RaisePropertyChanged(nameof(AllSelected));
+
         AllItems.Clear();
         ProcessItems.Clear();
         StartupItems.Clear();
